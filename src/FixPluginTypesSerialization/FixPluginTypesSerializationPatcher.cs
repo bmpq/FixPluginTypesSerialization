@@ -14,48 +14,100 @@ namespace FixPluginTypesSerialization
     {
         public static IEnumerable<string> TargetDLLs { get; } = new string[0];
 
-        public static List<string> PluginPaths = 
-            Directory.GetFiles(BepInEx.Paths.PluginPath, "*.dll", SearchOption.AllDirectories)
-            .Where(f => IsNetAssembly(f))
-            .ToList();
-        public static List<string> PluginNames = PluginPaths.Select(p => Path.GetFileName(p)).ToList();
+        public static List<string> PluginPaths = new List<string>();
+        public static List<string> PluginNames = new List<string>();
 
-        public static bool IsNetAssembly(string fileName)
-        {
-            try
-            {
-                AssemblyName.GetAssemblyName(fileName);
-            }
-            catch (BadImageFormatException)
-            {
-                return false;
-            }
+        private static HashSet<string> _availableAssemblyNames;
 
-            return true;
-        }
-
-        public static void Patch(AssemblyDefinition ass)
-        {
-        }
+        public static void Patch(AssemblyDefinition ass) { }
 
         public static void Initialize()
         {
             Log.Init();
-
             try
             {
                 InitializeInternal();
             }
             catch (Exception e)
             {
-                Log.Error($"Failed to initialize plugin types serialization fix: ({e.GetType()}) {e.Message}. Some plugins may not work properly.");
+                Log.Error($"Failed to initialize plugin types serialization fix: ({e.GetType()}) {e.Message}.");
                 Log.Error(e);
             }
         }
 
         private static void InitializeInternal()
         {
+            PopulateValidPlugins();
             DetourUnityPlayer();
+        }
+
+        private static void PopulateValidPlugins()
+        {
+            _availableAssemblyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var f in Directory.GetFiles(BepInEx.Paths.ManagedPath, "*.dll"))
+                _availableAssemblyNames.Add(Path.GetFileNameWithoutExtension(f));
+
+            // ALL bepinex assemblies (core, plugins, patchers)
+            var allBepInExFiles = Directory.GetFiles(BepInEx.Paths.BepInExRootPath, "*.dll", SearchOption.AllDirectories);
+            foreach (var f in allBepInExFiles)
+            {
+                _availableAssemblyNames.Add(Path.GetFileNameWithoutExtension(f));
+            }
+
+            var injectionCandidatePlugins = Directory.GetFiles(BepInEx.Paths.PluginPath, "*.dll", SearchOption.AllDirectories);
+
+            foreach (var file in injectionCandidatePlugins)
+            {
+                if (!IsNetAssembly(file)) continue;
+
+                if (HasMissingDependencies(file))
+                {
+                    continue;
+                }
+
+                PluginPaths.Add(file);
+                PluginNames.Add(Path.GetFileName(file));
+            }
+
+            Log.Info($"Injected {PluginPaths.Count} plugins into Unity Native Serialization.");
+        }
+
+        private static bool HasMissingDependencies(string filePath)
+        {
+            try
+            {
+                var references = Assembly.LoadFile(filePath).GetReferencedAssemblies();
+
+                foreach (var refName in references)
+                {
+                    if (!_availableAssemblyNames.Contains(refName.Name))
+                    {
+                        Log.Warning($"Excluding '{Path.GetFileName(filePath)}' from Serialization Fix. It references {refName.Name} which doesn't exist.");
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Log.Warning($"Could not verify dependencies for {Path.GetFileName(filePath)}: {ex.Message}");
+                return true;
+            }
+        }
+
+        public static bool IsNetAssembly(string fileName)
+        {
+            try
+            {
+                AssemblyName.GetAssemblyName(fileName);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         private static unsafe void DetourUnityPlayer()
