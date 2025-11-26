@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using FixPluginTypesSerialization.Patchers;
 using FixPluginTypesSerialization.Util;
 using Mono.Cecil;
@@ -77,14 +76,17 @@ namespace FixPluginTypesSerialization
         {
             try
             {
-                var references = Assembly.LoadFile(filePath).GetReferencedAssemblies();
+                var readerParams = new ReaderParameters { ReadSymbols = false };
 
-                foreach (var refName in references)
+                using (var assembly = AssemblyDefinition.ReadAssembly(filePath, readerParams))
                 {
-                    if (!_availableAssemblyNames.Contains(refName.Name))
+                    foreach (var reference in assembly.MainModule.AssemblyReferences)
                     {
-                        Log.Warning($"Excluding '{Path.GetFileName(filePath)}' from Serialization Fix. It references {refName.Name} which doesn't exist.");
-                        return true;
+                        if (!_availableAssemblyNames.Contains(reference.Name))
+                        {
+                            Log.Warning($"Excluding '{Path.GetFileName(filePath)}' from Serialization Fix. It references {reference.Name} which doesn't exist.");
+                            return true;
+                        }
                     }
                 }
 
@@ -101,8 +103,11 @@ namespace FixPluginTypesSerialization
         {
             try
             {
-                AssemblyName.GetAssemblyName(fileName);
-                return true;
+                var readerParams = new ReaderParameters { ReadSymbols = false };
+                using (AssemblyDefinition.ReadAssembly(fileName, readerParams))
+                {
+                    return true;
+                }
             }
             catch
             {
