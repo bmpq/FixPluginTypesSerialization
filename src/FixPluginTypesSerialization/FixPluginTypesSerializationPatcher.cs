@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
@@ -46,14 +46,20 @@ namespace FixPluginTypesSerialization
 
             foreach (var f in Directory.GetFiles(BepInEx.Paths.ManagedPath, "*.dll"))
                 _availableAssemblyNames.Add(Path.GetFileNameWithoutExtension(f));
-
-            // ALL bepinex assemblies (core, plugins, patchers)
-            var allBepInExFiles = Directory.GetFiles(BepInEx.Paths.BepInExRootPath, "*.dll", SearchOption.AllDirectories);
-            foreach (var f in allBepInExFiles)
-            {
+            
+            foreach (var f in Directory.GetFiles(BepInEx.Paths.PluginPath, "*.dll", SearchOption.AllDirectories))
                 _availableAssemblyNames.Add(Path.GetFileNameWithoutExtension(f));
-            }
 
+            foreach (var f in Directory.GetFiles(BepInEx.Paths.PatcherPluginPath, "*.dll", SearchOption.AllDirectories))
+                _availableAssemblyNames.Add(Path.GetFileNameWithoutExtension(f));
+            
+            var corePath = Path.Combine(BepInEx.Paths.BepInExRootPath, "core");
+            if (Directory.Exists(corePath))
+            {
+                foreach (var f in Directory.GetFiles(corePath, "*.dll", SearchOption.AllDirectories))
+                    _availableAssemblyNames.Add(Path.GetFileNameWithoutExtension(f));
+            }
+            
             var injectionCandidatePlugins = Directory.GetFiles(BepInEx.Paths.PluginPath, "*.dll", SearchOption.AllDirectories);
 
             foreach (var file in injectionCandidatePlugins)
